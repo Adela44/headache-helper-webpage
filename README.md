@@ -1,1 +1,1 @@
-# headache-helper-webpage
+This webpage is an interactive guide to help users understand possible types of headaches based on common causes, symptoms, and time intervals. The information on headache types, symptoms, and triggers is summarized from MedlinePlus, a health information service provided by the U.S. National Library of Medicine (NLM). The content extracted is in the public domain and can be shared without copyright restrictions.

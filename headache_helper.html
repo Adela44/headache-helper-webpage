@@ -1,0 +1,166 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Headache Helper — Interactive</title>
+  <style>
+    :root{--accent:#4b9ed6;--muted:#666}
+    body{font-family:system-ui,-apple-system,Segoe UI,Roboto,Helvetica,Arial;line-height:1.45;margin:0;padding:24px;background:#f7fbff;color:#0b2340}
+    .card{background:#fff;border-radius:12px;box-shadow:0 6px 20px rgba(11,35,64,0.06);padding:18px;margin-bottom:18px}
+    h1{font-size:20px;margin:0 0 6px}
+    p.lead{margin:0 0 12px;color:var(--muted)}
+    .grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+    .causes-list{display:flex;flex-direction:column;gap:8px}
+    label.checkbox{display:flex;align-items:center;gap:10px;padding:8px;border-radius:8px;border:1px solid #eef5fb}
+    button.primary{background:var(--accent);color:white;border:none;padding:10px 14px;border-radius:8px;cursor:pointer}
+    .result{margin-top:12px}
+    .type{border-left:4px solid var(--accent);padding:10px;border-radius:6px;background:#fbfeff;margin-bottom:10px}
+    .sym{color:var(--muted);font-size:13px}
+    .solutions{display:flex;flex-direction:column;gap:8px}
+    .chip{display:inline-block;background:#eef7ff;padding:6px 10px;border-radius:999px;font-size:13px}
+    .small{font-size:13px;color:var(--muted)}
+    footer{margin-top:18px;color:var(--muted);font-size:13px}
+    @media(max-width:800px){.grid{grid-template-columns:1fr}}
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Headache Helper</h1>
+    <p class="lead">Select the causes that best resonate with you. The app shows likely headache types and—after choosing a type—gives solutions filtered to the causes you selected.</p>
+    <div class="grid">
+      <div>
+        <h3>1) Choose cause(s)</h3>
+        <div class="causes-list" id="causes"></div>
+        <div style="margin-top:12px">
+          <button class="primary" id="showTypes">Show likely headache types</button>
+        </div>
+      </div>
+      <div>
+        <h3>2) Likely headache types</h3>
+        <div id="typesArea" class="result small">No types selected yet. Pick causes and click "Show likely headache types".</div>
+      </div>
+    </div>
+  </div>
+
+  <div id="typeDetail" class="card" style="display:none">
+    <h3>3) Pick the headache type that matches your symptoms & time interval</h3>
+    <div id="typeList"></div>
+    <div id="confirmArea" style="margin-top:12px;display:none">
+      <h3>4) Suggested solutions (filtered to the causes you selected)</h3>
+      <div id="solutions" class="solutions"></div>
+    </div>
+  </div>
+
+  <footer class="small">This tool uses summary information from MedlinePlus for symptom/type relationships. It is informational only and not medical advice.</footer>
+
+  <script>
+    // --- Data (from your provided table + MedlinePlus mapping) ---
+    const types = {
+      "Tension": {symptoms: "Dull, aching pain; tightness around forehead/back of head/neck", interval: "Gradual onset; hours to days"},
+      "Migraine": {symptoms: "Throbbing pain (often one-sided), nausea, sensitivity to light/sound", interval: "Hours to 3 days"},
+      "Cluster": {symptoms: "Intense pain around one eye, tearing, nasal congestion", interval: "15 min to 3 hours; cyclic"},
+      "Sinus": {symptoms: "Pressure around eyes, nose, and cheeks; worse with movement", interval: "Days to weeks"},
+      "Rebound": {symptoms: "Daily or near-daily headaches, especially upon waking", interval: "Persistent"},
+      "Hormone": {symptoms: "Similar to migraine; tied to menstrual cycle, pregnancy, menopause", interval: "Cyclic (monthly)"},
+      "Caffeine": {symptoms: "Throbbing pain; irritability; fatigue", interval: "Often begins after withdrawal"}
+    };
+
+    // Solutions per cause (from user-provided table)
+    const causeSolutions = {
+      "Stress or anxiety": ["Relaxation techniques (deep breathing, progressive muscle relaxation)", "Cognitive behavioral therapy (CBT)", "Regular exercise"],
+      "Dehydration": ["Increase water intake; rehydrate gradually"],
+      "Lack of sleep": ["Establish a regular sleep schedule; practice sleep hygiene"],
+      "Poor posture": ["Ergonomic corrections; stretching; physical therapy"],
+      "Hormonal changes": ["Track cycles; consult clinician for hormone options when appropriate"],
+      "Skipping meals": ["Eat regular, balanced meals; keep healthy snacks available"],
+      "Bright lights or screen time": ["Limit exposure; use blue-light filters; take regular screen breaks"],
+      "Certain foods": ["Keep a headache diary; try eliminating suspected trigger foods"],
+      "Medication overuse": ["Consult doctor about gradual tapering off overused medications"],
+      "Sinus infections": ["Use decongestants or antihistamines; see clinician for antibiotics if bacterial"],
+      "Caffeine withdrawal": ["Gradual reduction of caffeine; stay hydrated; rest"],
+    };
+
+    // Mapping causes -> likely headache types (based on MedlinePlus evidence)
+    const causeToTypes = {
+      "Stress or anxiety": ["Tension","Migraine"],
+      "Dehydration": ["Tension","Migraine"],
+      "Lack of sleep": ["Tension","Migraine"],
+      "Poor posture": ["Tension"],
+      "Hormonal changes": ["Hormone","Migraine"],
+      "Skipping meals": ["Migraine","Tension"],
+      "Bright lights or screen time": ["Migraine","Tension"],
+      "Certain foods": ["Migraine"],
+      "Medication overuse": ["Rebound"],
+      "Sinus infections": ["Sinus","Tension"],
+      "Caffeine withdrawal": ["Caffeine","Migraine"]
+    };
+
+    const causeList = Object.keys(causeToTypes);
+
+    // render causes
+    const causesEl = document.getElementById('causes');
+    causeList.forEach(c=>{
+      const id = 'c_'+c.replace(/\s+/g,'_');
+      const wrapper = document.createElement('label'); wrapper.className='checkbox';
+      wrapper.innerHTML = `<input type="checkbox" id="${id}" value="${c}"> <div><strong>${c}</strong></div>`;
+      causesEl.appendChild(wrapper);
+    });
+
+    // show types button
+    document.getElementById('showTypes').addEventListener('click', ()=>{
+      const selected = Array.from(document.querySelectorAll('#causes input[type=checkbox]:checked')).map(i=>i.value);
+      const typesSet = new Set();
+      selected.forEach(c=>{(causeToTypes[c]||[]).forEach(t=>typesSet.add(t));});
+      const typesArea = document.getElementById('typesArea');
+      const typeDetail = document.getElementById('typeDetail');
+      const typeList = document.getElementById('typeList');
+      typeList.innerHTML='';
+      if(selected.length===0){ typesArea.innerHTML='Please select one or more causes first.'; typeDetail.style.display='none'; return; }
+      if(typesSet.size===0){ typesArea.innerHTML='No likely headache types found for the selected causes.'; typeDetail.style.display='none'; return; }
+      typesArea.innerHTML = `<div class="small">Based on your selected causes: <span class="chip">${selected.join('</span> <span class="chip">')}</span></div>`;
+      // render each type
+      Array.from(typesSet).forEach(t=>{
+        const d = document.createElement('div'); d.className='type';
+        d.innerHTML = `<label style="display:block;cursor:pointer"><input type=radio name=type value="${t}"> <strong>${t}</strong> <div class="sym">${types[t].symptoms} <br><em>${types[t].interval}</em></div></label>`;
+        typeList.appendChild(d);
+      });
+      typeDetail.style.display='block';
+      document.getElementById('confirmArea').style.display='none';
+    });
+
+    // listen for type selection
+    document.body.addEventListener('change', (e)=>{
+      if(e.target && e.target.name==='type'){
+        const chosen = e.target.value;
+        // gather selected causes
+        const selectedCauses = Array.from(document.querySelectorAll('#causes input[type=checkbox]:checked')).map(i=>i.value);
+        // build solutions filtered by causes
+        const sols = [];
+        selectedCauses.forEach(c=>{
+          const arr = causeSolutions[c]||[];
+          arr.forEach(s=>{ // avoid duplicates
+            if(!sols.includes(s)) sols.push(s);
+          })
+        });
+        // Render
+        const solArea = document.getElementById('solutions'); solArea.innerHTML='';
+        if(sols.length===0){ solArea.innerHTML='<div class="small">No suggested solutions found for the selected causes and type. Consider reviewing your selected causes.</div>'; }
+        else{
+          sols.forEach(s=>{
+            const el = document.createElement('div'); el.className='card'; el.style.padding='10px'; el.innerHTML = `<strong>${s}</strong>`;
+            solArea.appendChild(el);
+          });
+        }
+        document.getElementById('confirmArea').style.display='block';
+        // scroll to solutions
+        setTimeout(()=>document.getElementById('confirmArea').scrollIntoView({behavior:'smooth'}),150);
+      }
+    });
+
+    // Helpful tip: allow double-click to reset
+    document.addEventListener('keydown', (e)=>{ if(e.key==='r' && (e.ctrlKey||e.metaKey)){ document.querySelectorAll('#causes input[type=checkbox]').forEach(i=>i.checked=false); document.getElementById('typesArea').innerHTML='No types selected yet. Pick causes and click "Show likely headache types".'; document.getElementById('typeDetail').style.display='none'; }});
+
+  </script>
+</body>
+</html>
